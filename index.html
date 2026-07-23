@@ -88,7 +88,7 @@
 
     .filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:6px 10px;background:var(--surface-1);border-radius:var(--radius);border:0.5px solid var(--border);font-size:12px;color:var(--text-secondary);margin-bottom:.75rem}
     .filter-row label{display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-primary)}
-    .simple-textarea{width:100%;min-height:260px;font-size:14px;line-height:1.8;font-family:var(--font-sans);color:var(--text-primary);background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;resize:vertical;outline:none;margin-bottom:.75rem}
+    .simple-textarea{width:100%;min-height:260px;max-height:none;font-size:14px;line-height:1.8;font-family:var(--font-sans);color:var(--text-primary);background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;resize:both;outline:none;margin-bottom:.75rem;overflow-y:auto}
     .simple-textarea:focus{border-color:var(--border-accent)}
 
     .top-bar{display:flex;align-items:center;gap:8px;margin-bottom:.75rem;flex-wrap:wrap}
@@ -504,22 +504,15 @@ function renderSimple(p){
     <label><input type="checkbox" id="fSy" ${p.filters?.symbol?'checked':''} onchange="simFilter('${p.id}')"> 英数字記号</label>
     <label><input type="checkbox" id="fBr" ${p.filters?.bracket?'checked':''} onchange="simFilter('${p.id}')"> 括弧類</label>
   </div>
-  <textarea class="simple-textarea" id="simTA" placeholder="ここにテキストを入力...">${escH(p.text || '')}</textarea>
-  <div class="add-bar">
-    <button class="act-btn" onclick="clearSim('${p.id}')"><span class="em" aria-hidden="true">🗑</span> クリア</button>
-  </div>`;
+  <textarea class="simple-textarea" id="simTA" placeholder="ここにテキストを入力...">${escH(p.text || '')}</textarea>`;
   const ta=eid('simTA');
-  ta.addEventListener('input', e=>{p.text=e.target.value;triggerSave(p);updateStatBar(p);});
+  ta.addEventListener('input', e=>{p.text=e.target.value;triggerSave(p);updateStatBar(p);autoResize(ta);});
 }
 function simFilter(id){
   const p=window.projects.find(x=>String(x.id)===String(id));if(!p)return;
   p.filters={space:eid('fSp').checked,punct:eid('fPu').checked,symbol:eid('fSy').checked,bracket:eid('fBr').checked};
   saveAll();
   updateStatBar(p);
-}
-function clearSim(id){
-  const p=window.projects.find(x=>String(x.id)===String(id));if(!p)return;
-  p.text='';const ta=eid('simTA');if(ta)ta.value='';saveAll();updateStatBar(p);
 }
 
 /* SETUP */
@@ -934,21 +927,47 @@ function downloadBlob(blob, filename){
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
-/* text出力: セリフ本文のみ。修正案は含めないが、仮置き中の行は仮置きテキストを出力。
-   先頭にBOM(\uFEFF)を付与しUTF-8を明示することで、スマホ含めどの環境でも文字化けしない */
+/* text出力: キャラ名を含めるか選べる */
 window.exportText = function(){
   const p=window.projects.find(x=>String(x.id)===String(window.activeId));if(!p)return;
-  let out='';
   if(p.mode==='simple'){
-    out=p.text || '';
+    /* シンプルモード: キャラ名は不要なのでそのまま出力 */
+    const out = p.text || '';
+    const blob=new Blob(['\uFEFF'+out],{type:'text/plain;charset=utf-8'});
+    downloadBlob(blob,(p.title||'テキスト')+'.txt');
   } else if(p.lines){
-    p.lines.forEach(l=>{
-      if(l.type==='stage')out+=`（${effText(l)}）\n`;
-      else{const sp=p.speakers.find(s=>String(s.id)===String(l.speakerId))||p.speakers[0];out+=`${sp.name}「${effText(l)}」\n`;}
-    });
+    /* 台本モード: キャラ名を含めるか選ぶ */
+    eid('main').innerHTML=`
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <h3>Text出力形式を選んでください</h3>
+        <p class="modal-sub">「${escH(truncTitle(p.title))}」</p>
+        <div class="modal-actions">
+          <button class="act-btn" onclick="openProject('${p.id}')">キャンセル</button>
+          <button class="act-btn ac" onclick="doExportText('${p.id}', false)">キャラ名なし</button>
+          <button class="act-btn ac" onclick="doExportText('${p.id}', true)">キャラ名付き</button>
+        </div>
+      </div>
+    </div>`;
   }
+};
+
+window.doExportText = function(pid, withCharacter){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  let out='';
+  p.lines.forEach(l=>{
+    if(l.type==='stage'){
+      out+=`（${effText(l)}）\n`;
+    } else {
+      const sp=p.speakers.find(s=>String(s.id)===String(l.speakerId))||p.speakers[0];
+      const text=effText(l);
+      out += withCharacter ? `${sp.name}「${text}」\n` : `「${text}」\n`;
+    }
+  });
   const blob=new Blob(['\uFEFF'+out],{type:'text/plain;charset=utf-8'});
   downloadBlob(blob,(p.title||'テキスト')+'.txt');
+  /* 出力後に作品を再表示 */
+  openProject(pid);
 };
 
 /* CSV出力: 話者とセリフを別列に分けた .csv を生成（Excelでそのまま開ける）。

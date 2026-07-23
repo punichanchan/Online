@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>台本・文字数カウンターエディタ (オフライン版)</title>
+  <meta name="theme-color" content="#2563eb">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="台本エディタ">
+
+  <style>
+    :root {
+      --surface-1: #f3f4f6; --surface-2: #ffffff;
+      --border: #d1d5db; --border-strong: #9ca3af;
+      --text-primary: #111827; --text-secondary: #4b5563;
+      --text-muted: #9ca3af; --text-accent: #2563eb;
+      --bg-accent: #eff6ff; --border-accent: #bfdbfe;
+      --radius: 8px;
+      --font-sans: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+      --text-danger: #ef4444; --bg-danger: #fee2e2; --border-danger: #fecaca;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:var(--font-sans);background:#f9fafb}
+    #root{display:flex;flex-direction:column;min-height:100vh}
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+
+    /* 絵文字アイコン共通 */
+    .em { font-style: normal; }
+
+    #app-content { display: flex; flex-direction: column; min-height: 100vh; }
+    /* 折り返しを許可し、内容が入り切らないときはバーが縦に伸びるように */
+    #statbar{display:flex;align-items:center;gap:8px 12px;padding:7px 14px;background:var(--surface-1);border-bottom:0.5px solid var(--border);font-size:13px;flex-shrink:0;flex-wrap:wrap}
+    #statbar .sb-proj{font-weight:500;color:var(--text-primary);max-width:100%;white-space:normal;overflow-wrap:anywhere}
+    #statbar .sb-sep{color:var(--border-strong)}
+    .stat-chip{display:flex;flex-direction:column;align-items:center;gap:1px}
+    .stat-chip .sc-val{font-size:15px;font-weight:500;color:var(--text-primary)}
+    .stat-chip .sc-lbl{font-size:10px;color:var(--text-muted)}
+    .stat-chip.ac .sc-val{color:var(--text-accent)}
+    .stat-chip.ac .sc-lbl{color:var(--text-accent)}
+    #statbar .ml{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+    #shell{display:flex;flex:1;min-height:0;position:relative;overflow:hidden;}
+    #sidebar{width:200px;flex-shrink:0;border-right:0.5px solid var(--border);padding:10px 8px;display:flex;flex-direction:column;gap:3px;transition:width .2s;background:#fff}
+    #sidebar.closed{width:40px;overflow:hidden}
+    .sb-toggle{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--radius);cursor:pointer;color:var(--text-secondary);border:0.5px solid var(--border);background:none;margin-bottom:6px;flex-shrink:0;font-size:13px}
+    .sb-toggle:hover{background:var(--surface-1);color:var(--text-primary)}
+    .sb-head{font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:.05em;padding:3px 6px;margin-bottom:1px;white-space:nowrap}
+    .sb-item{display:flex;align-items:center;gap:6px;padding:6px 7px;border-radius:var(--radius);cursor:pointer;font-size:12px;color:var(--text-secondary);border:0.5px solid transparent;position:relative}
+    .sb-item:hover{background:var(--surface-1);color:var(--text-primary)}
+    .sb-item.active{background:var(--surface-1);color:var(--text-primary);border-color:var(--border)}
+    .sb-item .sb-icon{font-size:13px;flex-shrink:0}
+    .sb-item.script-item{color:#D85A30}
+    .sb-item.script-item.active{background:#FAECE7;border-color:#F0997B}
+    .sb-item.script-item:hover{background:#FAECE7}
+    .sb-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
+    .sb-dots{font-size:14px;color:var(--text-muted);padding:2px 3px;border-radius:3px;flex-shrink:0;line-height:1}
+    .sb-dots:hover{background:var(--border);color:var(--text-primary)}
+    .sb-new{display:flex;align-items:center;gap:5px;padding:6px 7px;border-radius:var(--radius);cursor:pointer;font-size:12px;color:var(--text-accent);border:0.5px dashed var(--border-accent);margin-top:5px;white-space:nowrap}
+    .sb-new:hover{background:var(--bg-accent)}
+    .sb-divider{height:0.5px;background:var(--border);margin:5px 3px}
+    #sidebar.closed .sb-head,#sidebar.closed .sb-name,#sidebar.closed .sb-dots,#sidebar.closed .sb-new span,#sidebar.closed .sb-divider{display:none}
+    #sidebar.closed .sb-new{padding:6px;justify-content:center}
+    #sidebar.closed .sb-item{justify-content:center;padding:6px}
+
+    #ctxMenu{position:absolute;background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:4px;z-index:200;min-width:150px;display:none}
+    #ctxMenu.open{display:block}
+    .ctx-item{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:13px;color:var(--text-primary);border-radius:4px;cursor:pointer}
+    .ctx-item:hover{background:var(--surface-1)}
+    .ctx-item.danger{color:var(--text-danger)}
+    .ctx-item.danger:hover{background:var(--bg-danger)}
+
+    #main{flex:1;min-width:0;padding:1rem 1.25rem;overflow-y:auto}
+    .modal-overlay{background:rgba(0,0,0,.4);border-radius:12px;padding:2rem 1rem;display:flex;align-items:center;justify-content:center;min-height:340px;margin-bottom:1rem}
+    .modal-box{background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:1.5rem;width:100%;max-width:380px}
+    .modal-box h3{font-size:16px;font-weight:500;color:var(--text-primary);margin-bottom:4px}
+    .modal-sub{font-size:13px;color:var(--text-secondary);margin-bottom:1.25rem}
+    .mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+    .mode-card{background:var(--surface-1);border:0.5px solid var(--border);border-radius:var(--radius);padding:1rem;cursor:pointer}
+    .mode-card:hover,.mode-card.sel{border-color:var(--border-accent);background:var(--bg-accent)}
+    .mode-card .mc-icon{font-size:20px;margin-bottom:5px}
+    .mode-card h4{font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:2px}
+    .mode-card p{font-size:11px;color:var(--text-secondary);line-height:1.5}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end}
+    .rename-box{background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:1.25rem;width:100%;max-width:320px}
+
+    .filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:6px 10px;background:var(--surface-1);border-radius:var(--radius);border:0.5px solid var(--border);font-size:12px;color:var(--text-secondary);margin-bottom:.75rem}
+    .filter-row label{display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-primary)}
+    .simple-textarea{width:100%;min-height:260px;font-size:14px;line-height:1.8;font-family:var(--font-sans);color:var(--text-primary);background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 12px;resize:vertical;outline:none;margin-bottom:.75rem}
+    .simple-textarea:focus{border-color:var(--border-accent)}
+
+    .top-bar{display:flex;align-items:center;gap:8px;margin-bottom:.75rem;flex-wrap:wrap}
+    .icon-btn{font-size:12px;color:var(--text-muted);background:none;border:0.5px solid var(--border);border-radius:var(--radius);padding:4px 9px;cursor:pointer}
+    .icon-btn:hover{color:var(--text-primary);border-color:var(--border-strong)}
+    .speakers-bar{display:flex;gap:6px;margin-bottom:.6rem;flex-wrap:wrap;align-items:center}
+    .speaker-chip{padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:0.5px solid transparent}
+    .speaker-chip.active{border-color:currentColor}
+    .speaker-chip:not(.active){opacity:.4}
+    .alt-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);margin-bottom:.6rem}
+
+    .line-container{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;transition: opacity 0.2s;position:relative;}
+    .line-container.dragging { opacity: 0.4; background: var(--bg-accent); border-radius: var(--radius); }
+    .line{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:var(--radius);border:0.5px solid var(--border);background:var(--surface-2)}
+    .line:hover{border-color:var(--border-strong)}
+    .line.stage{background:var(--surface-1);border-style:dashed}
+
+    .line-speaker{font-size:11px;font-weight:600;min-width:65px;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;cursor:grab;border-radius:4px;background: rgba(0,0,0,0.03);text-align:center;}
+    .line-speaker:active{cursor:grabbing;}
+    .line-text{flex:1;font-size:13px;color:var(--text-primary);background:none;border:none;outline:none;resize:none;line-height:1.6;font-family:var(--font-sans);min-height:24px;overflow:hidden;word-break:break-all;white-space:pre-wrap;}
+    .line-text::placeholder{color:var(--text-muted)}
+
+    .line-inline-actions{display:flex;gap:4px;align-items:center;padding-left:73px;flex-wrap:wrap}
+    @media (max-width: 480px){ .line-inline-actions{padding-left:0} }
+    .bs{background:var(--surface-1);border:0.5px solid var(--border);cursor:pointer;color:var(--text-secondary);font-size:11px;padding:3px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px}
+    .bs:hover{background:var(--border);color:var(--text-primary)}
+    .bs.ac-change{background:var(--bg-accent);border-color:var(--border-accent);color:var(--text-accent);font-weight:500}
+    .bs.ac-change:hover{background:#dbeafe}
+    .bs.ac-danger{background:var(--bg-danger);border-color:var(--border-danger);color:var(--text-danger);}
+    .bs.ac-danger:hover{background:#fca5a5}
+    .bs.ac-add{background:#e1f5ee;border-color:#a7f3d0;color:#059669;font-weight:500}
+    .bs.ac-add:hover{background:#bbf7d0}
+    .bs.ac-proposal{background:#fff7ed;border-color:#fed7aa;color:#ea580c;font-weight:500}
+    .bs.ac-proposal:hover{background:#ffedd5}
+
+    .add-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px dashed var(--border);padding-top:12px;margin-top:12px}
+    .act-btn{font-size:12px;border-radius:var(--radius);padding:5px 12px;cursor:pointer;background:var(--surface-1);border:0.5px solid var(--border);color:var(--text-primary)}
+    .act-btn:hover{border-color:var(--border-strong)}
+    .act-btn.ac{background:none;border-color:var(--border-accent);color:var(--text-accent)}
+    .act-btn.ac:hover{background:var(--bg-accent)}
+
+    .setup-wrap{max-width:380px}
+    .setup-wrap h3{font-size:16px;font-weight:500;color:var(--text-primary);margin-bottom:4px}
+    .setup-sub{font-size:13px;color:var(--text-secondary);margin-bottom:1rem}
+    .sp-row{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+    .sp-dot{width:16px;height:16px;border-radius:50%;flex-shrink:0}
+    .cdots{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+    .cdot{width:16px;height:16px;border-radius:50%;cursor:pointer;border:2px solid transparent;flex-shrink:0}
+    .cdot.sel{border-color:var(--text-primary)}
+    .rm-btn{background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:14px;padding:2px}
+    .rm-btn:hover{color:var(--text-primary)}
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:10px;color:var(--text-muted);text-align:center}
+    .empty .ei{font-size:32px;margin-bottom:4px}
+    .empty p{font-size:14px}
+
+    #proposal-sidebar { position: absolute; top: 0; right: -280px; width: 280px; max-width: 90vw; height: 100%; background: #fff; border-left: 1px solid var(--border); box-shadow: -2px 0 8px rgba(0,0,0,0.05); z-index: 100; display: flex; flex-direction: column; transition: right 0.25s ease; }
+    #proposal-sidebar.open { right: 0; }
+    .ps-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #fff7ed; border-bottom: 0.5px solid var(--border); font-size: 13px; font-weight: 600; color: #ea580c; }
+    .ps-close { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 16px; }
+    .ps-content { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .prop-card { background: #fff7ed; border: 0.5px solid #fed7aa; border-radius: var(--radius); padding: 8px; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+    .prop-meta { font-size: 10px; color: #c2410c; display: flex; justify-content: space-between; font-weight: 500; }
+    .prop-text { width: 100%; font-size: 12px; line-height: 1.5; padding: 6px; border-radius: 4px; border: 0.5px solid #fed7aa; outline: none; resize: vertical; font-family: var(--font-sans); }
+    .prop-actions { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+    .badge-prop-count { display: inline-flex; align-items: center; justify-content: center; background: #ea580c; color: white; border-radius: 10px; font-size: 9px; padding: 1px 5px; font-weight: bold; margin-left: 2px; }
+
+    /* 修正案の仮置き中スタイル */
+    .line.previewing { background: #fffbf5; border-color: #fdba74; border-style: solid; }
+    .line.previewing .line-text { color: #9a3412; }
+    .preview-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; color: #ea580c; background: #ffedd5; border: 0.5px solid #fed7aa; border-radius: 10px; padding: 2px 8px; }
+  </style>
+</head>
+<body>
+
+<div id="app-content">
+  <h2 class="sr-only">台本・文字数カウンターエディタ</h2>
+  <div id="statbar">
+    <span class="sb-proj" id="barTitle">—</span>
+    <span class="sb-sep">|</span>
+    <div class="stat-chip">
+      <span class="sc-val" id="barAll">0</span>
+      <span class="sc-lbl">全体</span>
+    </div>
+    <div class="stat-chip ac">
+      <span class="sc-val" id="barFlt">0</span>
+      <span class="sc-lbl">記号抜き</span>
+    </div>
+    <div class="ml" id="barActions"></div>
+  </div>
+
+  <div id="shell">
+    <div id="sidebar">
+      <button class="sb-toggle" id="sbToggle" onclick="toggleSidebar()" title="サイドバーを開閉"><span class="em" id="sbToggleIcon">◀</span></button>
+      <div class="sb-head">作品</div>
+      <div id="sbList"></div>
+      <div class="sb-divider"></div>
+      <div class="sb-new" onclick="openNewModal()">
+        <span class="em" style="font-size:13px">＋</span>
+        <span>新規作品</span>
+      </div>
+    </div>
+
+    <div id="ctxMenu">
+      <div class="ctx-item" id="ctxRename" onclick="ctxAction('rename')"><span class="em">✏️</span> 名前を変更</div>
+      <div class="ctx-item" id="ctxCopy" onclick="ctxAction('copy')"><span class="em">📋</span> 全文コピー</div>
+      <div class="ctx-item danger" onclick="ctxAction('delete')"><span class="em">🗑</span> 削除</div>
+    </div>
+
+    <div id="main"></div>
+
+    <div id="proposal-sidebar">
+      <div class="ps-header">
+        <span><span class="em">💡</span> この行の修正案一覧</span>
+        <button class="ps-close" onclick="closeProposalSidebar()"><span class="em">✕</span></button>
+      </div>
+      <div class="ps-content" id="proposalSidebarContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS=[
+  {bg:'#E6F1FB',text:'#185FA5',name:'blue'},
+  {bg:'#EEEDFE',text:'#3C3489',name:'purple'},
+  {bg:'#E1F5EE',text:'#0F6E56',name:'teal'},
+  {bg:'#FAECE7',text:'#993C1D',name:'coral'},
+  {bg:'#FAEEDA',text:'#854F0B',name:'amber'},
+  {bg:'#FBEAF0',text:'#993556',name:'pink'},
+  {bg:'#EAF3DE',text:'#3B6D11',name:'green'},
+  {bg:'#F1EFE8',text:'#5F5E5A',name:'gray'},
+];
+const RE_SP=/[\s\u3000]/g;
+const RE_PU=/[。、！？…・〜ー]/g;
+const RE_SY=/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g;
+const RE_BR=/[「」『』【】〔〕〈〉《》（）｛｝()[\]{}<>]/g;
+
+window.projects = [];
+window.activeId = null;
+let sidebarOpen = window.innerWidth > 640; /* スマホでは初期状態で閉じる */
+let ctxTargetId=null;
+let newModalMode='script';
+let activeLineProposalId = null;
+
+/* ===== ローカル保存（オフライン・端末内保存） =====
+   Firebaseの代わりに localStorage に全作品を保存する。
+   通信は一切発生しないため、機内モードでも動作する。 */
+const STORAGE_KEY = 'daihon-editor-data-v1';
+
+function loadAll(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    window.projects = Array.isArray(data.projects) ? data.projects : [];
+    window.activeId = data.activeId || null;
+  } catch(e) {
+    console.error('読み込みエラー:', e);
+    window.projects = [];
+  }
+}
+
+function saveAll(){
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      projects: window.projects,
+      activeId: window.activeId
+    }));
+  } catch(e) {
+    console.error('保存エラー:', e);
+    alert('保存に失敗しました。端末の空き容量を確認してください。');
+  }
+}
+
+/* 旧コードとの互換のため dbSave/dbDelete は保持（中身はローカル保存） */
+window.dbSave = function(){ saveAll(); };
+window.dbDelete = function(){ saveAll(); };
+
+/* 安全な一意ID生成ユーティリティ */
+window.generateUniqueId = function() {
+  return Date.now() + Math.floor(Math.random() * 1000);
+};
+
+/* 保存タイマーをプロジェクトごとに分離 */
+let saveTimeouts = {};
+function triggerSave(p) {
+  const key = String(p.id);
+  if(saveTimeouts[key]) clearTimeout(saveTimeouts[key]);
+  saveTimeouts[key] = setTimeout(() => {
+    delete saveTimeouts[key];
+    saveAll();
+  }, 800);
+}
+
+function eid(id){return document.getElementById(id)}
+/* " と ' もエスケープ（value="..." 属性の破壊・HTML注入防止） */
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function truncTitle(s){return s ? (s.length>9?s.slice(0,9)+'…':s) : '無題'}
+function applyFilters(t,f){
+  let s=t;
+  if(!f) return s;
+  if(f.space)s=s.replace(RE_SP,'');
+  if(f.punct)s=s.replace(RE_PU,'');
+  if(f.symbol)s=s.replace(RE_SY,'');
+  if(f.bracket)s=s.replace(RE_BR,'');
+  return s;
+}
+
+function autoResize(ta){
+  if (!ta) return;
+  ta.style.height='auto';
+  ta.style.height=ta.scrollHeight+'px';
+}
+function autoResizeAll() { document.querySelectorAll('.line-text').forEach(ta => autoResize(ta)); }
+
+/* 行の「実効テキスト」を返す（仮置き中は仮置きテキスト、通常は本文） */
+function effText(l){
+  return l.previewOn ? (l.previewText || '') : (l.text || '');
+}
+
+function getProjectText(p){
+  if(p.mode==='simple')return p.text||'';
+  if(!p.lines)return '';
+  return p.lines.map(l=>effText(l)).join('');
+}
+
+function updateStatBar(p){
+  if(!p){eid('barTitle').textContent='—';eid('barAll').textContent='0';eid('barFlt').textContent='0';eid('barActions').innerHTML='';return;}
+  eid('barTitle').textContent = truncTitle(p.title);
+
+  const raw=getProjectText(p);
+  eid('barAll').textContent=raw.length.toLocaleString();
+  eid('barFlt').textContent=applyFilters(raw,p.filters).length.toLocaleString();
+
+  let actionsHtml = `<button class="act-btn ac" onclick="exportText()"><span class="em">📄</span> text出力</button>`;
+  if(p.mode!=='simple'){
+    actionsHtml += `<button class="act-btn ac" onclick="exportCsv()"><span class="em">📊</span> Excel用CSV出力</button>`;
+  }
+  eid('barActions').innerHTML = actionsHtml;
+}
+
+function toggleSidebar(){
+  sidebarOpen=!sidebarOpen;
+  eid('sidebar').classList.toggle('closed',!sidebarOpen);
+  eid('sbToggleIcon').textContent=sidebarOpen?'◀':'▶';
+}
+
+window.renderSidebar = function(){
+  const list=eid('sbList');if(!list)return;list.innerHTML='';
+  window.projects.forEach(p=>{
+    const div=document.createElement('div');
+    const isScript=p.mode==='script';
+    div.className='sb-item'+(isScript?' script-item':'')+(String(window.activeId)===String(p.id)?' active':'');
+    const icon = isScript ? '📄' : '📝';
+
+    div.innerHTML=`<span class="em sb-icon" aria-hidden="true">${icon}</span>
+      <span class="sb-name">${escH(truncTitle(p.title))}</span>
+      <span class="sb-dots" onclick="openCtxMenu(event,'${p.id}')" title="編集メニュー">···</span>`;
+    div.addEventListener('click', e=>{if(!e.target.closest('.sb-dots')) openProject(p.id);});
+    list.appendChild(div);
+  });
+}
+
+function openCtxMenu(e,id){
+  e.stopPropagation();
+  ctxTargetId=id;
+  const menu=eid('ctxMenu');
+  menu.classList.add('open');
+  const rect=e.target.getBoundingClientRect();
+  const shellRect=eid('shell').getBoundingClientRect();
+  menu.style.left=(rect.left-shellRect.left+20)+'px';
+  menu.style.top=(rect.top-shellRect.top+20)+'px';
+}
+document.addEventListener('click',()=>closeCtxMenu());
+function closeCtxMenu(){ const m=eid('ctxMenu'); if(m) m.classList.remove('open'); ctxTargetId=null; }
+
+function ctxAction(action){
+  const p=window.projects.find(x=>String(x.id)===String(ctxTargetId));
+  closeCtxMenu();
+  if(!p)return;
+  if(action==='rename') openRenameModal(p);
+  else if(action==='copy') copyProjectText(p);
+  else if(action==='delete') confirmDelete(p);
+}
+
+function openRenameModal(p){
+  eid('main').innerHTML=`
+  <div class="modal-overlay">
+    <div class="rename-box">
+      <h3 style="margin-bottom:10px">名前を変更</h3>
+      <input type="text" id="renameInput" value="${escH(p.title)}" maxlength="30" style="width:100%;margin-bottom:12px">
+      <div class="modal-actions">
+        <button class="act-btn" onclick="openProject('${p.id}')">キャンセル</button>
+        <button class="act-btn ac" onclick="doRename('${p.id}')">変更</button>
+      </div>
+    </div>
+  </div>`;
+  const inp=eid('renameInput'); inp.focus(); inp.select();
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')doRename(p.id);if(e.key==='Escape')openProject(p.id);});
+}
+function doRename(id){
+  const p=window.projects.find(x=>String(x.id)===String(id));if(!p)return;
+  const v=eid('renameInput');if(!v)return;
+  p.title=v.value.trim()||p.title;
+  saveAll();
+  window.renderSidebar();updateStatBar(p);openProject(id);
+}
+
+function copyProjectText(p){
+  let text='';
+  if(p.mode==='simple'){text=p.text||'';}
+  /* 仮置き中の行は仮置きテキストをコピーする */
+  else if(p.lines){p.lines.forEach(l=>{if(l.type==='stage')text+=`（${effText(l)}）\n`;else{const sp=p.speakers.find(s=>String(s.id)===String(l.speakerId))||p.speakers[0];text+=`${sp.name}「${effText(l)}」\n`;}});}
+  navigator.clipboard.writeText(text).catch(()=>{});
+}
+
+function confirmDelete(p){
+  eid('main').innerHTML=`
+  <div class="modal-overlay">
+    <div class="rename-box">
+      <h3 style="margin-bottom:8px">「${escH(truncTitle(p.title))}」を削除しますか？</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">この操作は取り消せません。</p>
+      <div class="modal-actions">
+        <button class="act-btn" onclick="openProject('${p.id}')">キャンセル</button>
+        <button class="act-btn" style="border-color:var(--border-danger);color:var(--text-danger)" onclick="doDelete('${p.id}')"><span class="em">🗑</span> 削除する</button>
+      </div>
+    </div>
+  </div>`;
+}
+function doDelete(id){
+  window.projects=window.projects.filter(p=>String(p.id)!==String(id));
+  if(String(window.activeId)===String(id))window.activeId=window.projects.length?window.projects[window.projects.length-1].id:null;
+  saveAll();
+  window.renderSidebar();
+  if(window.activeId)openProject(window.activeId);else renderEmpty();
+}
+
+function openNewModal(){
+  newModalMode='script';
+  eid('main').innerHTML=`
+  <div class="modal-overlay">
+    <div class="modal-box">
+      <h3>新規作品</h3>
+      <p class="modal-sub">モードを選んでください</p>
+      <div class="mode-cards">
+        <div class="mode-card sel" id="mc-script" onclick="selectNewMode('script')">
+          <div class="mc-icon"><span class="em" aria-hidden="true">👥</span></div>
+          <h4>台本モード</h4>
+          <p>話者ごとにセリフを管理</p>
+        </div>
+        <div class="mode-card" id="mc-simple" onclick="selectNewMode('simple')">
+          <div class="mc-icon"><span class="em" aria-hidden="true">📝</span></div>
+          <h4>シンプルモード</h4>
+          <p>自由入力＋文字数カウント</p>
+        </div>
+      </div>
+      <div style="margin-bottom:1rem">
+        <input type="text" id="newTitle" placeholder="作品名（例：新ネタ）" maxlength="30" style="width: 100%; padding: 6px 10px; border-radius: var(--radius); border: 0.5px solid var(--border); outline: none;">
+      </div>
+      <div class="modal-actions">
+        <button class="act-btn" onclick="${window.projects.length?'openProject(\''+(window.activeId||window.projects[0].id)+'\')':'renderEmpty()'}">キャンセル</button>
+        <button class="act-btn ac" onclick="createProject()">作成</button>
+      </div>
+    </div>
+  </div>`;
+  setTimeout(()=>{const el=eid('newTitle');if(el)el.focus();},50);
+}
+function selectNewMode(m){
+  newModalMode=m;
+  ['script','simple'].forEach(x=>{const el=eid('mc-'+x);if(el)el.classList.toggle('sel',x===m);});
+}
+function createProject(){
+  const titleEl=eid('newTitle');
+  const title=(titleEl?titleEl.value.trim():'')||'無題';
+  const newProjId = String(window.generateUniqueId());
+  const p={id:newProjId,title,mode:newModalMode,filters:{space:true,punct:true,symbol:true,bracket:true}};
+  if(newModalMode==='script'){
+    p.setupRows=[{id:String(window.generateUniqueId()),name:'',color:COLORS[0]},{id:String(window.generateUniqueId()),name:'',color:COLORS[2]}];
+    p.speakers=null;p.lines=null;p.activeSpId=null;p.altMode=true;
+  } else {p.text='';}
+  window.projects.push(p);window.activeId=p.id;
+  saveAll();
+  window.renderSidebar();updateStatBar(p);
+  if(newModalMode==='script')renderSetup(p);else renderSimple(p);
+}
+
+window.openProject = function(id){
+  if (!id) return renderEmpty();
+  window.activeId=id;
+  const p=window.projects.find(x=>String(x.id)===String(id));
+  if(!p)return renderEmpty();
+  saveAll(); /* 最後に開いた作品を記憶 */
+  window.renderSidebar();
+  updateStatBar(p);
+  if(p.mode==='simple')renderSimple(p);
+  else if(p.speakers)renderScriptEditor(p);
+  else renderSetup(p);
+
+  if(activeLineProposalId) closeProposalSidebar();
+}
+window.renderEmpty = function(){
+  window.activeId=null;updateStatBar(null);
+  eid('main').innerHTML=`<div class="empty"><div class="ei"><span class="em" aria-hidden="true">📄</span></div><p>左下の「新規作品」から作品を追加してください</p></div>`;
+}
+
+/* SIMPLE */
+function renderSimple(p){
+  eid('main').innerHTML=`
+  <div class="top-bar"><span style="font-size:15px;font-weight:500;color:var(--text-primary)">${escH(p.title)}</span></div>
+  <div class="filter-row">
+    <span>除外：</span>
+    <label><input type="checkbox" id="fSp" ${p.filters?.space?'checked':''} onchange="simFilter('${p.id}')"> 空白・改行</label>
+    <label><input type="checkbox" id="fPu" ${p.filters?.punct?'checked':''} onchange="simFilter('${p.id}')"> 句読点・記号</label>
+    <label><input type="checkbox" id="fSy" ${p.filters?.symbol?'checked':''} onchange="simFilter('${p.id}')"> 英数字記号</label>
+    <label><input type="checkbox" id="fBr" ${p.filters?.bracket?'checked':''} onchange="simFilter('${p.id}')"> 括弧類</label>
+  </div>
+  <textarea class="simple-textarea" id="simTA" placeholder="ここにテキストを入力...">${escH(p.text || '')}</textarea>
+  <div class="add-bar">
+    <button class="act-btn" onclick="clearSim('${p.id}')"><span class="em" aria-hidden="true">🗑</span> クリア</button>
+  </div>`;
+  const ta=eid('simTA');
+  ta.addEventListener('input', e=>{p.text=e.target.value;triggerSave(p);updateStatBar(p);});
+}
+function simFilter(id){
+  const p=window.projects.find(x=>String(x.id)===String(id));if(!p)return;
+  p.filters={space:eid('fSp').checked,punct:eid('fPu').checked,symbol:eid('fSy').checked,bracket:eid('fBr').checked};
+  saveAll();
+  updateStatBar(p);
+}
+function clearSim(id){
+  const p=window.projects.find(x=>String(x.id)===String(id));if(!p)return;
+  p.text='';const ta=eid('simTA');if(ta)ta.value='';saveAll();updateStatBar(p);
+}
+
+/* SETUP */
+/* 編集画面から話者設定へ安全に戻るための関数
+   （現在の speakers を setupRows に反映してから設定画面を開く） */
+window.openSetup = function(pid){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  if(p.speakers && p.speakers.length){
+    p.setupRows = p.speakers.map(s=>({id:s.id, name:s.name, color:s.color}));
+  }
+  renderSetup(p);
+};
+
+function renderSetup(p){
+  eid('main').innerHTML=`<div class="setup-wrap">
+    <h3>${escH(p.title)} — 登場人物の設定</h3>
+    <p class="setup-sub">名前と色を決めてください</p>
+    <div id="spList"></div>
+    <div style="margin-bottom:1rem">
+      <button class="act-btn" onclick="addSpRow('${p.id}')"><span class="em" aria-hidden="true">＋</span> 話者を追加</button>
+    </div>
+    <button class="act-btn ac" onclick="startScript('${p.id}')">${p.lines && p.lines.length ? '設定を保存して台本に戻る' : '台本を書きはじめる'}</button>
+  </div>`;
+  renderSpRows(p);
+}
+function renderSpRows(p){
+  const list=eid('spList');if(!list)return;list.innerHTML='';
+  p.setupRows.forEach(row=>{
+    const div=document.createElement('div');
+    div.innerHTML=`<div class="sp-row">
+      <div class="sp-dot" style="background:${row.color.bg};border:2px solid ${row.color.text}"></div>
+      <input type="text" placeholder="名前（例：田中）" value="${escH(row.name)}" maxlength="10" id="sn${row.id}" style="flex:1; padding: 4px 8px; border-radius: 4px; border: 0.5px solid var(--border); outline: none;">
+      ${p.setupRows.length>2?`<button class="rm-btn" onclick="rmSpRow('${p.id}','${row.id}')"><span class="em">✕</span></button>`:''}
+    </div>
+    <div class="cdots" id="cd${row.id}"></div>`;
+    list.appendChild(div);
+    const dots=eid('cd'+row.id);
+    COLORS.forEach(c=>{
+      const d=document.createElement('div');
+      d.className='cdot'+(row.color.name===c.name?' sel':'');
+      d.style.background=c.bg;d.style.borderColor=row.color.name===c.name?c.text:'transparent';
+      d.onclick=()=>{
+        /* 入力中の名前が消えないよう、色変更前に現在値を保存 */
+        p.setupRows.forEach(r=>{const el=eid('sn'+r.id);if(el)r.name=el.value;});
+        row.color=c;saveAll();renderSpRows(p);
+      };
+      dots.appendChild(d);
+    });
+    eid('sn'+row.id).addEventListener('input',e=>{row.name=e.target.value;triggerSave(p);});
+  });
+}
+function addSpRow(pid){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  /* 入力中の名前が消えないよう、行追加前に現在値を保存 */
+  p.setupRows.forEach(r=>{const el=eid('sn'+r.id);if(el)r.name=el.value;});
+  p.setupRows.push({id:String(window.generateUniqueId()),name:'',color:COLORS[p.setupRows.length%COLORS.length]});
+  saveAll();renderSpRows(p);
+}
+function rmSpRow(pid,rid){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p||p.setupRows.length<=2)return;
+  p.setupRows.forEach(r=>{const el=eid('sn'+r.id);if(el)r.name=el.value;});
+  p.setupRows=p.setupRows.filter(r=>String(r.id)!==String(rid));
+  saveAll();renderSpRows(p);
+}
+function startScript(pid){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  p.setupRows.forEach(r=>{const el=eid('sn'+r.id);if(el)r.name=el.value.trim();});
+  p.speakers=p.setupRows.map(r=>({id:r.id,name:r.name||'話者',color:r.color}));
+  /* 既存の台本があれば保持する */
+  if(!p.lines || !p.lines.length){
+    p.lines=[{id:String(window.generateUniqueId()),type:'line',speakerId:p.speakers[0].id,text:'',proposals:[]}];
+  } else {
+    /* 削除された話者に紐づくセリフは先頭の話者に付け替える */
+    p.lines.forEach(l=>{
+      if(l.type==='line' && !p.speakers.some(s=>String(s.id)===String(l.speakerId))){
+        l.speakerId=p.speakers[0].id;
+      }
+    });
+  }
+  /* アクティブ話者が消えていた場合も先頭に付け替え */
+  if(!p.activeSpId || !p.speakers.some(s=>String(s.id)===String(p.activeSpId))){
+    p.activeSpId=p.speakers[0].id;
+  }
+  saveAll();
+  renderScriptEditor(p);
+}
+
+/* SCRIPT EDITOR */
+function renderScriptEditor(p){
+  eid('main').innerHTML=`
+  <div class="top-bar">
+    <span style="font-size:15px;font-weight:500;color:var(--text-primary)">${escH(p.title)}</span>
+    <button class="icon-btn" onclick="openSetup('${p.id}')"><span class="em" aria-hidden="true">⚙️</span> 話者設定</button>
+  </div>
+  <div class="filter-row">
+    <span>除外：</span>
+    <label><input type="checkbox" id="sfSp" ${p.filters?.space?'checked':''} onchange="scFilter('${p.id}')"> 空白・改行</label>
+    <label><input type="checkbox" id="sfPu" ${p.filters?.punct?'checked':''} onchange="scFilter('${p.id}')"> 句読点・記号</label>
+    <label><input type="checkbox" id="sfSy" ${p.filters?.symbol?'checked':''} onchange="scFilter('${p.id}')"> 英数字記号</label>
+    <label><input type="checkbox" id="sfBr" ${p.filters?.bracket?'checked':''} onchange="scFilter('${p.id}')"> 括弧類</label>
+  </div>
+  <div class="speakers-bar" id="spBar"></div>
+  <div class="alt-toggle">
+    <input type="checkbox" id="altM" ${p.altMode?'checked':''} onchange="toggleAltMode('${p.id}', this.checked)">
+    <label for="altM">追加時に話者を自動で交互に切り替える</label>
+  </div>
+  <div class="lines" id="linesList"></div>`;
+  renderSpBar(p);renderLines(p);
+}
+function toggleAltMode(pid, val){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  p.altMode=val;
+  saveAll();
+}
+function scFilter(pid){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  p.filters={space:eid('sfSp').checked,punct:eid('sfPu').checked,symbol:eid('sfSy').checked,bracket:eid('sfBr').checked};
+  saveAll();
+  updateStatBar(p);
+}
+function renderSpBar(p){
+  const bar=eid('spBar');if(!bar)return;bar.innerHTML='';
+  p.speakers.forEach(s=>{
+    const c=document.createElement('div');
+    c.className='speaker-chip'+(String(p.activeSpId)===String(s.id)?' active':'');
+    c.style.background=s.color.bg;c.style.color=s.color.text;
+    c.textContent=s.name;c.onclick=()=>{p.activeSpId=s.id;saveAll();renderSpBar(p);};
+    bar.appendChild(c);
+  });
+}
+function getNextSpId(p, targetIndex = null){
+  if(!p.altMode)return p.activeSpId;
+  let baseLine = null;
+  if (targetIndex !== null) {
+    for (let i = targetIndex; i >= 0; i--) {
+      if (p.lines[i] && p.lines[i].type === 'line') { baseLine = p.lines[i]; break; }
+    }
+  } else {
+    const ls=p.lines.filter(l=>l.type==='line');
+    if(ls.length) baseLine = ls[ls.length-1];
+  }
+  if(!baseLine) return p.speakers[0].id;
+  const idx=p.speakers.findIndex(s=>String(s.id)===String(baseLine.speakerId));
+  if(idx === -1) return p.speakers[0].id;
+  return p.speakers[(idx+1)%p.speakers.length].id;
+}
+
+function insertLineAfter(pid, index) {
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  const sid=getNextSpId(p, index); p.activeSpId=sid;
+  p.lines.splice(index + 1, 0, {id:String(window.generateUniqueId()),type:'line',speakerId:sid,text:'',proposals:[]});
+  saveAll();
+  renderSpBar(p);renderLines(p);
+  setTimeout(()=>{
+    const containers = document.querySelectorAll('.line-container');
+    if(containers[index + 1]) {
+      const ta = containers[index + 1].querySelector('.line-text');
+      if(ta) { ta.focus(); autoResizeAll(); }
+    }
+  },30);
+}
+function insertStageAfter(pid, index) {
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;
+  p.lines.splice(index + 1, 0, {id:String(window.generateUniqueId()),type:'stage',text:'',proposals:[]});
+  saveAll();
+  renderLines(p);
+  setTimeout(()=>{
+    const containers = document.querySelectorAll('.line-container');
+    if(containers[index + 1]) {
+      const ta = containers[index + 1].querySelector('.line-text');
+      if(ta) { ta.focus(); autoResizeAll(); }
+    }
+  },30);
+}
+
+function delLine(pid,i){
+  const p=window.projects.find(x=>String(x.id)===String(pid));if(!p||p.lines.length<=1)return;
+  if (confirm("この行を削除してもよろしいですか？")) {
+    p.lines.splice(i,1); saveAll(); renderLines(p);
+  }
+}
+
+function cycleSpk(pid,i){const p=window.projects.find(x=>String(x.id)===String(pid));if(!p)return;const l=p.lines[i];if(l.type==='stage') return;const idx=p.speakers.findIndex(s=>String(s.id)===String(l.speakerId));l.speakerId=p.speakers[(idx+1)%p.speakers.length].id;saveAll();renderLines(p);}
+
+let dragStartIndex = null;
+function handleDragStart(e, index) { dragStartIndex = index; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; }
+function handleDragOver(e) { e.preventDefault(); }
+function handleDragDrop(pid, index) {
+  if (dragStartIndex === null || dragStartIndex === index) return;
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const draggedItem = p.lines.splice(dragStartIndex, 1)[0];
+  p.lines.splice(index, 0, draggedItem);
+  saveAll();
+  renderLines(p); dragStartIndex = null;
+}
+function handleDragEnd(e) { e.currentTarget.classList.remove('dragging'); dragStartIndex = null; }
+
+function renderLines(p){
+  const list=eid('linesList');if(!list)return;list.innerHTML='';
+  p.lines.forEach((l,i)=>{
+    if(!l.proposals) l.proposals = [];
+    const container = document.createElement('div');
+    container.className = 'line-container';
+    container.draggable = true;
+
+    container.addEventListener('dragstart', (e) => handleDragStart(e, i));
+    container.addEventListener('dragover', handleDragOver);
+    container.addEventListener('drop', () => handleDragDrop(p.id, i));
+    container.addEventListener('dragend', handleDragEnd);
+
+    const div=document.createElement('div');
+    const pCountHtml = l.proposals.length ? `<span class="badge-prop-count">${l.proposals.length}</span>` : '';
+    /* 仮置き中に表示する操作ボタン群 */
+    const previewBtns = l.previewOn ? `
+        <span class="preview-badge"><span class="em">👁</span> 仮置き中</span>
+        <button class="bs ac-change" onclick="commitPreview('${p.id}','${l.id}')" title="仮置き中のテキストを本文として確定"><span class="em">✓</span> 採用</button>
+        <button class="bs" onclick="clearPreview('${p.id}','${l.id}')" title="仮置きをやめて元の本文に戻す"><span class="em">↩</span> 解除</button>` : '';
+
+    if(l.type==='stage'){
+      div.className='line stage'+(l.previewOn?' previewing':'');
+      div.innerHTML=`<span class="line-speaker" style="color:var(--text-muted);font-style:italic" title="ドラッグして並び替え">ト書き</span>
+        <textarea class="line-text" rows="1" placeholder="（状況説明）" style="font-style:italic;color:var(--text-secondary)">${escH(effText(l))}</textarea>`;
+
+      const actionRow = document.createElement('div');
+      actionRow.className = 'line-inline-actions';
+      actionRow.innerHTML = `${previewBtns}
+        <button class="bs ac-danger" onclick="delLine('${p.id}',${i})"><span class="em">🗑</span> 削除</button>
+        <button class="bs ac-proposal" onclick="openProposalSidebarForLine('${p.id}', '${l.id}')"><span class="em">💡</span> 修正案${pCountHtml}</button>
+        <button class="bs ac-add" onclick="insertLineAfter('${p.id}',${i})"><span class="em">＋</span> セリフ追加</button>
+        <button class="bs ac-add" onclick="insertStageAfter('${p.id}',${i})"><span class="em">（）</span> ト書き</button>`;
+
+      container.appendChild(div); container.appendChild(actionRow);
+    } else {
+      const sp=p.speakers.find(s=>String(s.id)===String(l.speakerId))||p.speakers[0];
+      div.className='line'+(l.previewOn?' previewing':'');div.style.borderLeftWidth='3px';div.style.borderLeftColor=l.previewOn?'#ea580c':sp.color.text;
+      div.innerHTML=`<span class="line-speaker" style="color:${sp.color.text}; background:${sp.color.bg}" title="ドラッグして並び替え">${escH(sp.name)}</span>
+        <textarea class="line-text" rows="1" placeholder="セリフを入力...">${escH(effText(l))}</textarea>`;
+
+      const actionRow = document.createElement('div');
+      actionRow.className = 'line-inline-actions';
+      actionRow.innerHTML = `${previewBtns}
+        <button class="bs ac-change" onclick="cycleSpk('${p.id}',${i})" title="この行の話者を切り替え"><span class="em">🔁</span> 話者切替</button>
+        <button class="bs ac-danger" onclick="delLine('${p.id}',${i})"><span class="em">🗑</span> 削除</button>
+        <button class="bs ac-proposal" onclick="openProposalSidebarForLine('${p.id}', '${l.id}')"><span class="em">💡</span> 修正案${pCountHtml}</button>
+        <button class="bs ac-add" onclick="insertLineAfter('${p.id}',${i})"><span class="em">＋</span> セリフ追加</button>
+        <button class="bs ac-add" onclick="insertStageAfter('${p.id}',${i})"><span class="em">（）</span> ト書き</button>`;
+
+      container.appendChild(div); container.appendChild(actionRow);
+    }
+
+    const ta=div.querySelector('textarea');
+    /* 仮置き中は本文ではなく仮置きテキストの方を編集する（元の本文は保護される） */
+    ta.addEventListener('input', e=>{
+      if(l.previewOn){ l.previewText=e.target.value; }
+      else { l.text=e.target.value; }
+      triggerSave(p); autoResize(e.target); updateStatBar(p);
+    });
+    ta.addEventListener('keydown', e=>{
+      if(e.key==='Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); insertLineAfter(p.id, i); }
+      else if(e.key==='Enter'){ setTimeout(() => autoResize(e.target), 10); }
+    });
+    list.appendChild(container);
+  });
+
+  autoResizeAll();
+  updateStatBar(p);
+}
+
+/* ===== 修正案（自分用の下書き案としてローカル保存） ===== */
+window.openProposalSidebarForLine = function(pid, lineId) {
+  activeLineProposalId = lineId;
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  eid('proposal-sidebar').classList.add('open');
+  renderProposalSidebarContent(p, lineId);
+};
+
+window.closeProposalSidebar = function() {
+  eid('proposal-sidebar').classList.remove('open');
+  activeLineProposalId = null;
+};
+
+function renderProposalSidebarContent(p, lineId) {
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  if (!line.proposals) line.proposals = [];
+
+  const contentArea = eid('proposalSidebarContent');
+  let html = `
+    <button class="act-btn ac" style="width:100%; justify-content:center; display:flex; gap:6px;" onclick="addNewProposal('${p.id}', '${lineId}')">
+      <span class="em">＋</span> 新しい修正案を追加
+    </button>
+    <div style="height:0.5px; background:var(--border); margin:4px 0;"></div>
+  `;
+
+  if (line.proposals.length === 0) {
+    html += `<p style="font-size:12px; color:var(--text-muted); text-align:center; margin-top:20px;">修正案はありません</p>`;
+  } else {
+    line.proposals.forEach((prop, index) => {
+      html += `
+        <div class="prop-card">
+          <div class="prop-meta">
+            <span>案 ${index + 1}</span>
+            <span>${new Date(prop.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+          </div>
+          <textarea class="prop-text" oninput="updateProposalText('${p.id}', '${lineId}', ${index}, this.value)">${escH(prop.text || '')}</textarea>
+          <div class="prop-actions">
+            <button class="bs ac-danger" style="padding:2px 6px;" onclick="deleteProposal('${p.id}', '${lineId}', ${index})" title="修正案を削除"><span class="em">🗑</span></button>
+            <button class="bs ac-proposal" style="padding:2px 8px;" onclick="setProposalPreview('${p.id}', '${lineId}', ${index})" title="本文を書き換えずに一時的にこの修正案を表示">
+              <span class="em">👁</span> 仮置き
+            </button>
+            <button class="bs ac-change" style="padding:2px 8px; background:#ea580c; border-color:#ea580c; color:white;" onclick="applyProposalToLine('${p.id}', '${lineId}', ${index})">
+              <span class="em">✓</span> 本文を上書き
+            </button>
+          </div>
+        </div>`;
+    });
+  }
+  contentArea.innerHTML = html;
+}
+
+window.addNewProposal = function(pid, lineId) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+
+  line.proposals.push({
+    text: line.text || '',
+    createdAt: Date.now()
+  });
+
+  saveAll();
+  renderProposalSidebarContent(p, lineId);
+  renderLines(p);
+};
+
+window.updateProposalText = function(pid, lineId, index, newText) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  if (line.proposals[index]) {
+    line.proposals[index].text = newText;
+    triggerSave(p);
+  }
+};
+
+window.deleteProposal = function(pid, lineId, index) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  if (confirm("この修正案を削除してもよろしいですか？")) {
+    line.proposals.splice(index, 1);
+    saveAll();
+    renderProposalSidebarContent(p, lineId);
+    renderLines(p);
+  }
+};
+
+/* ===== 修正案の仮置き（一時的な本文表示の差し替え） ===== */
+/* 元の本文(l.text)は保持したまま、表示・文字数カウント・出力だけを仮置きテキストに切り替える */
+window.setProposalPreview = function(pid, lineId, index) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  const prop = line.proposals[index]; if (!prop) return;
+  line.previewOn = true;
+  line.previewText = prop.text || '';
+  saveAll();
+  renderLines(p);
+};
+
+/* 仮置きを解除して元の本文の表示に戻す */
+window.clearPreview = function(pid, lineId) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  line.previewOn = false;
+  line.previewText = '';
+  saveAll();
+  renderLines(p);
+};
+
+/* 仮置き中のテキストを本文として確定する */
+window.commitPreview = function(pid, lineId) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  if (!line.previewOn) return;
+  if (confirm(`仮置き中のテキストを本文として確定しますか？\n「${line.previewText || ''}」`)) {
+    line.text = line.previewText || '';
+    line.previewOn = false;
+    line.previewText = '';
+    saveAll();
+    renderLines(p);
+  }
+};
+
+window.applyProposalToLine = function(pid, lineId, index) {
+  const p = window.projects.find(x => String(x.id) === String(pid)); if (!p) return;
+  const line = p.lines.find(l => String(l.id) === String(lineId)); if (!line) return;
+  const prop = line.proposals[index];
+  if (!prop) return;
+
+  if (confirm(`この修正案で本文のテキストを上書き採用しますか？\n「${prop.text}」`)) {
+    line.text = prop.text;
+    /* 上書き確定時は仮置き状態も解除する */
+    line.previewOn = false;
+    line.previewText = '';
+    saveAll();
+    renderLines(p);
+    alert("本文を修正案に書き換えました！");
+  }
+};
+
+/* ===== 出力 ===== */
+/* 共通: ダウンロード処理（使用後にURLを解放） */
+function downloadBlob(blob, filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+/* text出力: セリフ本文のみ。修正案は含めないが、仮置き中の行は仮置きテキストを出力。
+   先頭にBOM(\uFEFF)を付与しUTF-8を明示することで、スマホ含めどの環境でも文字化けしない */
+window.exportText = function(){
+  const p=window.projects.find(x=>String(x.id)===String(window.activeId));if(!p)return;
+  let out='';
+  if(p.mode==='simple'){
+    out=p.text || '';
+  } else if(p.lines){
+    p.lines.forEach(l=>{
+      if(l.type==='stage')out+=`（${effText(l)}）\n`;
+      else{const sp=p.speakers.find(s=>String(s.id)===String(l.speakerId))||p.speakers[0];out+=`${sp.name}「${effText(l)}」\n`;}
+    });
+  }
+  const blob=new Blob(['\uFEFF'+out],{type:'text/plain;charset=utf-8'});
+  downloadBlob(blob,(p.title||'テキスト')+'.txt');
+};
+
+/* CSV出力: 話者とセリフを別列に分けた .csv を生成（Excelでそのまま開ける）。
+   外部ライブラリ不要のためオフラインでも動作する。
+   BOM付きUTF-8にすることでExcelでも文字化けしない */
+function csvCell(s){
+  s = String(s ?? '');
+  if(/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+window.exportCsv = function(){
+  const p=window.projects.find(x=>String(x.id)===String(window.activeId));if(!p||!p.lines)return;
+  const rows=[['話者','セリフ']];
+  p.lines.forEach(l=>{
+    if(l.type==='stage'){
+      rows.push(['ト書き', effText(l)]);
+    } else {
+      const sp=p.speakers.find(s=>String(s.id)===String(l.speakerId))||p.speakers[0];
+      rows.push([sp.name, effText(l)]);
+    }
+  });
+  const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  downloadBlob(blob,(p.title||'台本')+'.csv');
+};
+
+/* ===== 起動処理 ===== */
+(function init(){
+  loadAll();
+  /* スマホでは初期状態でサイドバーを閉じる */
+  eid('sidebar').classList.toggle('closed', !sidebarOpen);
+  eid('sbToggleIcon').textContent = sidebarOpen ? '◀' : '▶';
+  window.renderSidebar();
+  if(window.activeId && window.projects.some(p=>String(p.id)===String(window.activeId))){
+    openProject(window.activeId);
+  } else if(window.projects.length){
+    openProject(window.projects[window.projects.length-1].id);
+  } else {
+    renderEmpty();
+  }
+})();
+
+/* PWA: Service Worker登録（httpsまたはlocalhostで配信されたときのみ有効。
+   file:// で直接開いた場合は登録せず、そのまま動作する） */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
